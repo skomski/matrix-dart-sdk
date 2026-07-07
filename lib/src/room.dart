@@ -2491,24 +2491,47 @@ class Room {
       );
     }
 
-    final edits = await client.getRelatingEventsWithRelType(
-      id,
-      eventId,
-      RelationshipTypes.edit,
-    );
-    for (final edit in edits.chunk) {
-      final txnid = client.generateUniqueTransactionId();
+    Future<String?> redactWithRateLimitRetry(
+      String redactionEventId,
+      String txid,
+    ) async {
       try {
-        await client.redactEvent(id, edit.eventId, txnid, reason: reason);
+        return await client.redactEvent(
+          id,
+          redactionEventId,
+          txid,
+          reason: reason,
+        );
       } on MatrixException catch (e) {
         final retryAfterMs = e.retryAfterMs;
         if (retryAfterMs == null) rethrow;
         await Future.delayed(Duration(milliseconds: retryAfterMs));
-        await client.redactEvent(id, edit.eventId, txnid, reason: reason);
+        return await client.redactEvent(
+          id,
+          redactionEventId,
+          txid,
+          reason: reason,
+        );
       }
     }
 
-    return await client.redactEvent(id, eventId, messageID, reason: reason);
+    String? nextBatch;
+    do {
+      final edits = await client.getRelatingEventsWithRelType(
+        id,
+        eventId,
+        RelationshipTypes.edit,
+        from: nextBatch,
+        limit: 50,
+      );
+      for (final edit in edits.chunk) {
+        final txnid = client.generateUniqueTransactionId();
+        await redactWithRateLimitRetry(edit.eventId, txnid);
+      }
+      nextBatch = edits.nextBatch;
+    } while (nextBatch != null);
+
+    return await redactWithRateLimitRetry(eventId, messageID);
   }
 
   /// This tells the server that the user is typing for the next N milliseconds
