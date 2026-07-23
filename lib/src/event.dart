@@ -430,7 +430,8 @@ class Event extends MatrixEvent {
       if (thumbnailBytes != null) {
         return MatrixImageFile(
           bytes: thumbnailBytes,
-          name: '$filename.thumbnail.${extensionFromMime(thumbnailMimetype)}',
+          name:
+              '$filename.thumbnail.${extensionFromMime(thumbnailMimetype) ?? 'jpg'}',
           mimeType: thumbnailMimetype,
           width: thumbnailInfoMap.tryGet<int>('w'),
           height: thumbnailInfoMap.tryGet<int>('h'),
