@@ -1468,7 +1468,14 @@ class Room {
           // comparison also fired for unrelated errors such as
           // `M_CONSENT_NOT_GIVEN`, silently leaving the room.
           exception.errcode == 'M_UNKNOWN') {
-        await leave();
+        // Best effort: a failing leave must not replace the join exception,
+        // which is the one the caller needs. Leaving an orphaned room is
+        // itself often refused, so this is the common path, not the rare one.
+        try {
+          await leave();
+        } catch (e, s) {
+          Logs().w('Unable to leave room after a failed join', e, s);
+        }
       }
       rethrow;
     }

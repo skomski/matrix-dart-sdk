@@ -39,6 +39,9 @@ class JoinLeaveApi extends FakeMatrixApi {
   int joinStatus = 200;
   String joinBody = '{"room_id": "!696r7674:example.com"}';
 
+  int leaveStatus = 200;
+  String leaveBody = '{}';
+
   bool get sentJoin => issued.any((e) => e.path.endsWith('/join'));
   bool get sentLeave => issued.any((e) => e.path.endsWith('/leave'));
 
@@ -61,8 +64,8 @@ class JoinLeaveApi extends FakeMatrixApi {
     }
     if (isLeave) {
       return http.Response(
-        '{}',
-        200,
+        leaveBody,
+        leaveStatus,
         headers: {'content-type': 'application/json'},
       );
     }
@@ -209,6 +212,41 @@ void main() {
             '"unknown error" and "room not found"',
       );
     });
+
+    test(
+      '2d. a failing leave must not mask the original join error',
+      () async {
+        // Exactly the production shape: the orphaned-room join fails 502
+        // M_UNKNOWN, the workaround fires, and the leave is refused 403
+        // because the room is orphaned too.
+        api.joinStatus = 502;
+        api.joinBody = jsonEncode({
+          'errcode': 'M_UNKNOWN',
+          'error': 'Failed to make_join via any server',
+        });
+        api.leaveStatus = 403;
+        api.leaveBody = jsonEncode({
+          'errcode': 'M_FORBIDDEN',
+          'error': 'You are not allowed to leave this room',
+        });
+
+        MatrixException? thrown;
+        try {
+          await invitedRoom.join();
+        } on MatrixException catch (e) {
+          thrown = e;
+        }
+
+        expect(api.sentLeave, isTrue, reason: 'workaround should still fire');
+        expect(
+          thrown?.errcode,
+          'M_UNKNOWN',
+          reason: 'the caller must see why the JOIN failed; an unguarded '
+              '`await leave()` before `rethrow` replaces it with the leave '
+              'error (M_FORBIDDEN) and the original cause is lost',
+        );
+      },
+    );
 
     test('3. boundary: an error body without an errcode must NOT leave',
         () async {
