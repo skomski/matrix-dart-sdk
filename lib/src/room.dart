@@ -1454,12 +1454,20 @@ class Room {
       if (dmId != null) await removeFromDirectChat();
       if (leaveIfNotFound &&
           membership == Membership.invite &&
-          // Right now Synapse responses with `M_UNKNOWN` when the room can not
-          // be found. This is the case for example when User A invites User B
-          // to a direct chat and then User A leaves the chat before User B
-          // joined.
+          // Synapse does not answer 404 when an invited-to room can not be
+          // found, e.g. because User A invited User B to a direct chat and
+          // then left before User B joined. Instead it responds with:
+          //   - HTTP status 502 ("Failed to make_join via any server")
+          //   - errcode `M_UNKNOWN`
+          // So the check is on the errcode only; the HTTP status is
+          // deliberately ignored.
           // See: https://github.com/element-hq/synapse/issues/1533
-          exception.error == MatrixError.M_UNKNOWN) {
+          //
+          // Compare the raw errcode instead of `exception.error`: MatrixError
+          // maps *every* unrecognised errcode to `M_UNKNOWN`, so the enum
+          // comparison also fired for unrelated errors such as
+          // `M_CONSENT_NOT_GIVEN`, silently leaving the room.
+          exception.errcode == 'M_UNKNOWN') {
         await leave();
       }
       rethrow;
