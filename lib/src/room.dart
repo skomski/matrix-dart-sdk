@@ -380,9 +380,14 @@ class Room {
   Future<Event?> refreshLastEvent({
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    final lastEvent = _refreshingLastEvent ??= _refreshLastEvent();
-    _refreshingLastEvent = null;
-    return lastEvent;
+    final future = _refreshingLastEvent ??= _refreshLastEvent(timeout: timeout);
+    try {
+      return await future;
+    } finally {
+      // Clear only if we are still the in-flight request, so that a refresh
+      // started after ours is not dropped on the floor.
+      if (identical(_refreshingLastEvent, future)) _refreshingLastEvent = null;
+    }
   }
 
   Future<Event?>? _refreshingLastEvent;
